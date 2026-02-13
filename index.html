@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>근무 관리 시스템</title>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"></script>
+  <style>
+    body {
+      background: #121212;
+      color: white;
+      font-family: Arial;
+      text-align: center;
+      padding: 40px;
+    }
+    button {
+      padding: 15px 30px;
+      margin: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .checkin { background: #4CAF50; }
+    .checkout { background: #F44336; }
+    .card {
+      background: #1E1E1E;
+      padding: 20px;
+      border-radius: 10px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>마인크래프트 근무 시스템</h1>
+
+<input type="text" id="nickname" placeholder="닉네임 입력">
+<br><br>
+
+<button class="checkin" onclick="checkIn()">출근</button>
+<button class="checkout" onclick="checkOut()">퇴근</button>
+
+<div class="card">
+  <h3>오늘 근무 기록</h3>
+  <div id="log"></div>
+</div>
+
+<script type="module">
+
+const firebaseConfig = {
+    apiKey: "AIzaSyAJ6MhR1JsGbvieb8akAi4Zpas_W3uaNJ4",
+    authDomain: "dosep-b6ee3.firebaseapp.com",
+    projectId: "dosep-b6ee3",
+    storageBucket: "dosep-b6ee3.firebasestorage.app",
+    messagingSenderId: "100096560571",
+    appId: "1:100096560571:web:7eb2c1255835b6b57c889e"
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+window.checkIn = async function() {
+  const name = document.getElementById("nickname").value;
+  if(!name) return alert("닉네임 입력하세요");
+
+  await addDoc(collection(db, "worklogs"), {
+    nickname: name,
+    type: "출근",
+    time: new Date().toLocaleString()
+  });
+
+  alert("출근 완료!");
+  loadLogs();
+}
+
+window.checkOut = async function() {
+  const name = document.getElementById("nickname").value;
+  if(!name) return alert("닉네임 입력하세요");
+
+  await addDoc(collection(db, "worklogs"), {
+    nickname: name,
+    type: "퇴근",
+    time: new Date().toLocaleString()
+  });
+
+  alert("퇴근 완료!");
+  loadLogs();
+}
+
+async function loadLogs() {
+  const querySnapshot = await getDocs(collection(db, "worklogs"));
+  let output = "";
+  querySnapshot.forEach((doc) => {
+    const data = doc.data();
+    output += `${data.nickname} - ${data.type} - ${data.time}<br>`;
+  });
+  document.getElementById("log").innerHTML = output;
+}
+
+loadLogs();
+
+</script>
+
+</body>
+</html>
