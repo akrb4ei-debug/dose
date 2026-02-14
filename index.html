@@ -1,107 +1,264 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>근무 관리 시스템</title>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"></script>
-  <style>
-    body {
-      background: #121212;
-      color: white;
-      font-family: Arial;
-      text-align: center;
-      padding: 40px;
-    }
-    button {
-      padding: 15px 30px;
-      margin: 10px;
-      border: none;
-      border-radius: 8px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-    .checkin { background: #4CAF50; }
-    .checkout { background: #F44336; }
-    .card {
-      background: #1E1E1E;
-      padding: 20px;
-      border-radius: 10px;
-      margin-top: 20px;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Minecraft Work Manager</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{
+  margin:0;
+  font-family:'Segoe UI',sans-serif;
+  background:linear-gradient(135deg,#141e30,#243b55);
+  color:white;
+  text-align:center;
+}
+.container{padding:40px;}
+button{
+  padding:10px 20px;
+  margin:6px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  font-weight:bold;
+}
+.primary{background:#00c6ff;color:black;}
+.danger{background:#ff4e50;color:white;}
+.adminBtn{background:#ffd700;color:black;}
+.card{
+  background:rgba(255,255,255,0.08);
+  padding:20px;
+  border-radius:12px;
+  margin-top:20px;
+}
+.hidden{display:none;}
+input{
+  padding:8px;
+  border-radius:6px;
+  border:none;
+}
+.modal{
+  position:fixed;
+  top:0;left:0;
+  width:100%;height:100%;
+  background:rgba(0,0,0,0.6);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+.modal-content{
+  background:white;
+  color:black;
+  padding:25px;
+  border-radius:10px;
+}
+</style>
 </head>
 <body>
 
-<h1>마인크래프트 근무 시스템</h1>
+<div class="container">
+<h1>🛡 Minecraft Work Manager</h1>
 
-<input type="text" id="nickname" placeholder="닉네임 입력">
-<br><br>
-
-<button class="checkin" onclick="checkIn()">출근</button>
-<button class="checkout" onclick="checkOut()">퇴근</button>
+<input id="nickname" placeholder="닉네임 입력">
+<br>
+<button class="primary" onclick="checkIn()">출근</button>
+<button class="danger" onclick="checkOut()">퇴근</button>
+<button class="adminBtn" onclick="openAdmin()">관리</button>
 
 <div class="card">
-  <h3>오늘 근무 기록</h3>
-  <div id="log"></div>
+<h3>근무 기록</h3>
+<div id="log"></div>
+</div>
+
+<div id="adminPanel" class="card hidden">
+<h2>관리자 패널</h2>
+
+<h3>유저 관리 (화이트리스트)</h3>
+<input id="newUser" placeholder="닉네임 입력">
+<button onclick="addUser()">유저 추가</button>
+<button onclick="removeUser()">유저 삭제</button>
+
+<h3>관리자 권한 부여</h3>
+<input id="adminUser" placeholder="닉네임 입력">
+<button onclick="grantAdmin()">관리자 부여</button>
+
+<h3>통계</h3>
+<canvas id="statsChart"></canvas>
+
+<button class="danger" onclick="clearAll()">전체 기록 삭제</button>
+</div>
+
+</div>
+
+<div id="modal" class="modal hidden">
+<div class="modal-content">
+<p id="modalText"></p>
+<button onclick="closeModal()">확인</button>
+</div>
 </div>
 
 <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyAJ6MhR1JsGbvieb8akAi4Zpas_W3uaNJ4",
-    authDomain: "dosep-b6ee3.firebaseapp.com",
-    projectId: "dosep-b6ee3",
-    storageBucket: "dosep-b6ee3.firebasestorage.app",
-    messagingSenderId: "100096560571",
-    appId: "1:100096560571:web:7eb2c1255835b6b57c889e"
-
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  apiKey: "AIzaSyAJ6MhR1JsGbvieb8akAi4Zpas_W3uaNJ4",
+  authDomain: "dosep-b6ee3.firebaseapp.com",
+  projectId: "dosep-b6ee3",
+  storageBucket: "dosep-b6ee3.firebasestorage.app",
+  messagingSenderId: "100096560571",
+  appId: "1:100096560571:web:7eb2c1255835b6b57c889e"
+};
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-window.checkIn = async function() {
-  const name = document.getElementById("nickname").value;
-  if(!name) return alert("닉네임 입력하세요");
+const DEFAULT_ADMIN = "LMSTD_23";
 
-  await addDoc(collection(db, "worklogs"), {
-    nickname: name,
-    type: "출근",
-    time: new Date().toLocaleString()
+// 기본 관리자 자동 등록
+await setDoc(doc(db,"users",DEFAULT_ADMIN),{admin:true,whitelisted:true},{merge:true});
+
+function showModal(text){
+  document.getElementById("modalText").innerText=text;
+  document.getElementById("modal").classList.remove("hidden");
+}
+window.closeModal=()=>document.getElementById("modal").classList.add("hidden");
+
+async function isWhitelisted(name){
+  const user = await getDoc(doc(db,"users",name));
+  return user.exists() && user.data().whitelisted;
+}
+
+async function isAdmin(name){
+  const user = await getDoc(doc(db,"users",name));
+  return user.exists() && user.data().admin;
+}
+
+async function isWorking(name){
+  const snap = await getDocs(collection(db,"worklogs"));
+  let last=null;
+  snap.forEach(d=>{
+    if(d.data().nickname===name) last=d.data();
   });
+  return last && last.type==="출근";
+}
 
-  alert("출근 완료!");
+window.checkIn=async()=>{
+  const name=document.getElementById("nickname").value;
+  if(!name) return showModal("닉네임 입력!");
+  if(!(await isWhitelisted(name))) return showModal("등록되지 않은 유저입니다!");
+  if(await isWorking(name)) return showModal("퇴근 하지 않았습니다!");
+
+  await addDoc(collection(db,"worklogs"),{
+    nickname:name,
+    type:"출근",
+    time:Date.now()
+  });
   loadLogs();
-}
+};
 
-window.checkOut = async function() {
-  const name = document.getElementById("nickname").value;
-  if(!name) return alert("닉네임 입력하세요");
+window.checkOut=async()=>{
+  const name=document.getElementById("nickname").value;
+  if(!name) return showModal("닉네임 입력!");
+  if(!(await isWhitelisted(name))) return showModal("등록되지 않은 유저입니다!");
+  if(!(await isWorking(name))) return showModal("출근 하지 않았습니다!");
 
-  await addDoc(collection(db, "worklogs"), {
-    nickname: name,
-    type: "퇴근",
-    time: new Date().toLocaleString()
+  await addDoc(collection(db,"worklogs"),{
+    nickname:name,
+    type:"퇴근",
+    time:Date.now()
   });
-
-  alert("퇴근 완료!");
   loadLogs();
-}
+};
 
-async function loadLogs() {
-  const querySnapshot = await getDocs(collection(db, "worklogs"));
-  let output = "";
-  querySnapshot.forEach((doc) => {
-    const data = doc.data();
-    output += `${data.nickname} - ${data.type} - ${data.time}<br>`;
+async function loadLogs(){
+  const snap=await getDocs(collection(db,"worklogs"));
+  let html="";
+  snap.forEach(d=>{
+    const data=d.data();
+    html+=`${data.nickname} - ${data.type} - ${new Date(data.time).toLocaleString()}<br>`;
   });
-  document.getElementById("log").innerHTML = output;
+  document.getElementById("log").innerHTML=html;
 }
-
 loadLogs();
 
-</script>
+window.openAdmin=async()=>{
+  const name=document.getElementById("nickname").value;
+  if(!(await isAdmin(name))) return showModal("관리자 권한이 없습니다.");
+  document.getElementById("adminPanel").classList.remove("hidden");
+  loadStats();
+};
 
+window.addUser=async()=>{
+  const name=document.getElementById("newUser").value;
+  await setDoc(doc(db,"users",name),{whitelisted:true,admin:false});
+  showModal("유저 등록 완료");
+};
+
+window.removeUser=async()=>{
+  const name=document.getElementById("newUser").value;
+  await deleteDoc(doc(db,"users",name));
+  showModal("유저 삭제 완료");
+};
+
+window.grantAdmin=async()=>{
+  const name=document.getElementById("adminUser").value;
+  await setDoc(doc(db,"users",name),{admin:true,whitelisted:true},{merge:true});
+  showModal("관리자 부여 완료");
+};
+
+window.clearAll=async()=>{
+  const snap=await getDocs(collection(db,"worklogs"));
+  snap.forEach(async d=>{
+    await deleteDoc(doc(db,"worklogs",d.id));
+  });
+  showModal("전체 삭제 완료");
+  loadLogs();
+};
+
+async function loadStats(){
+  const snap=await getDocs(collection(db,"worklogs"));
+  let dataMap={};
+
+  snap.forEach(d=>{
+    const data=d.data();
+    if(!dataMap[data.nickname]) dataMap[data.nickname]=[];
+    dataMap[data.nickname].push(data);
+  });
+
+  let labels=[];
+  let avgHours=[];
+
+  for(let user in dataMap){
+    let logs=dataMap[user];
+    let total=0;
+    let sessions=0;
+
+    for(let i=0;i<logs.length-1;i++){
+      if(logs[i].type==="출근" && logs[i+1].type==="퇴근"){
+        total+= (logs[i+1].time - logs[i].time);
+        sessions++;
+      }
+    }
+
+    if(sessions>0){
+      labels.push(user);
+      avgHours.push((total/sessions/3600000).toFixed(2));
+    }
+  }
+
+  new Chart(document.getElementById("statsChart"),{
+    type:"bar",
+    data:{
+      labels:labels,
+      datasets:[{
+        label:"평균 근무시간 (시간)",
+        data:avgHours,
+        backgroundColor:"rgba(0,255,200,0.7)"
+      }]
+    }
+  });
+}
+
+</script>
 </body>
 </html>
